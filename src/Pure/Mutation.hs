@@ -88,20 +88,20 @@ instance Pure Observer where
   view =
     Component $ \self ->
       let
-        handleRef (Node ref) = modifyM_ self $ \o _ -> return ((Nothing,ref),run o)
+        withNode node = modifyM_ self $ \o _ -> return ((Nothing,node),run o)
         run o = do
           unless (disable o) $ do
-            (_,ref) <- get self
+            (_,node) <- get self
             options <- toOptions o
             (obs,rel) <- observer (action o)
-            observe obs ref options
-            modify_ self $ \_ _ -> (Just rel,ref)
+            observe obs node options
+            modify_ self $ \_ _ -> (Just rel,node)
       in
         def
-          { construct = pure (Nothing,nullJSV)
-          , receive = \new (mrel,ref) -> traverse_ id mrel >> run new >> return (mrel,ref)
+          { construct = pure (Nothing,coerce nullJSV)
+          , receive = \new (mrel,node) -> traverse_ id mrel >> run new >> return (mrel,node)
           , unmounted = get self >>= \(mrel,_) -> traverse_ id mrel
-          , render = \Observer_ {..} _ -> as (features & Lifecycle (HostRef handleRef)) children
+          , render = \Observer_ {..} (_,node) -> as (features & Host node withNode) children
           }
 
 mkMutation :: JSV -> IO Mutation
@@ -154,7 +154,7 @@ foreign import javascript unsafe
   "$r = new MutationObserver($1)" observer_js :: Callback (JSV -> IO ()) -> IO JSV
 
 foreign import javascript unsafe
-  "$1.observe($2,$3)" observe_js :: JSV -> JSV -> JSV -> IO ()
+  "$1.observe($2,$3)" observe_js :: JSV -> Node -> JSV -> IO ()
 
 foreign import javascript unsafe
   "$1.disconnect()" disconnect_js :: JSV -> IO ()
@@ -176,7 +176,7 @@ observer f = do
   pure (def,pure ())
 #endif
 
-observe :: JSV -> JSV -> JSV -> IO ()
+observe :: JSV -> Node -> JSV -> IO ()
 observe obsrvr node opts =
 #ifdef __GHCJS__
   observe_js obsrvr node opts
